@@ -1,15 +1,10 @@
 package main
 
 import (
-	"encoding/base64"
-	"encoding/json"
-	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"sync"
-	"time"
-
-	"github.com/rs/xid"
 
 	"github.com/labstack/echo"
 
@@ -19,11 +14,10 @@ import (
 
 // FunkerManager - the funker runtime
 type FunkerManager struct {
-	redis         *redis.Client
-	globalRuntime *goja.Runtime
-	funksCache    map[string]*goja.Program
-	funksLocker   sync.RWMutex
-	vmpool        sync.Pool
+	redis       *redis.Client
+	funksCache  map[string]string
+	funksLocker sync.RWMutex
+	vmpool      sync.Pool
 }
 
 // NewFunker - creates a new funker runtime
@@ -31,12 +25,11 @@ func NewFunker() *FunkerManager {
 	f := new(FunkerManager)
 
 	f.redis = redisClient
-	f.globalRuntime = goja.New()
-	f.funksCache = map[string]*goja.Program{}
+	f.funksCache = map[string]string{}
 	f.funksLocker = sync.RWMutex{}
 	f.vmpool = sync.Pool{
 		New: func() interface{} {
-			return f.newJsRuntime()
+			return goja.New()
 		},
 	}
 
@@ -45,7 +38,7 @@ func NewFunker() *FunkerManager {
 	for a := 0; a < *flagWorkers; a++ {
 		go (func() {
 			for i := 0; i < *flagInitialVMPoolSize; i++ {
-				f.vmpool.Put(f.newJsRuntime())
+				f.vmpool.Put(f.vmpool.New())
 			}
 		})()
 	}
@@ -53,50 +46,39 @@ func NewFunker() *FunkerManager {
 	return f
 }
 
-// newJSVM - init a new js runtime
-func (f *FunkerManager) newJsRuntime() *goja.Runtime {
-	vm := goja.New()
-	for name, mod := range jsModules() {
-		vm.Set(name, mod)
-	}
-	vm.RunString(fmt.Sprintf("vm = {id: '%s'}", xid.New().String()))
-	vm.RunString(jsScripts())
-	return vm
-}
-
 // RefreshCache - refreshes the funker cache to speedup executions
 func (f *FunkerManager) RefreshCache() {
 	f.funksLocker.Lock()
 	defer f.funksLocker.Unlock()
-
-	for name, fn := range f.redis.HGetAll(redisFunksKey).Val() {
-		prog, err := goja.Compile(name, fn, true)
+	for name, code := range f.redis.HGetAll(redisFunksKey).Val() {
+		_, err := goja.Compile(name, code, true)
 		if err != nil {
+			log.Println("[FunksInitializer]", err.Error())
 			continue
 		}
-		f.funksCache[name] = prog
+		f.funksCache[name] = code
 	}
 }
 
 // AddFunk - add/override the specified funk
-func (f *FunkerManager) AddFunk(name, code string, cacheTTL int64) error {
+func (f *FunkerManager) AddFunk(name, code string, temp bool) error {
 	f.funksLocker.Lock()
 	defer f.funksLocker.Unlock()
 
 	name = strings.ToLower(name)
 
-	prog, err := goja.Compile("", code, true)
+	_, err := goja.Compile("", code, true)
 	if err != nil {
 		return err
 	}
 
-	if _, err := f.redis.HSet(redisFunksKey, name, code).Result(); err != nil {
-		return err
+	if !temp {
+		if _, err := f.redis.HSet(redisFunksKey, name, code).Result(); err != nil {
+			return err
+		}
 	}
 
-	f.redis.IncrBy(redisFunksTTLKey+name, cacheTTL).Result()
-
-	f.funksCache[name] = prog
+	f.funksCache[name] = code
 
 	return nil
 }
@@ -107,67 +89,56 @@ func (f *FunkerManager) DeleteFunk(name string) {
 	defer f.funksLocker.Unlock()
 
 	name = strings.ToLower(name)
-	delete(f.funksCache, name)
-	f.redis.HDel(redisFunksKey, name).Result()
-	f.redis.Del(redisFunksTTLKey + name)
+	if f.redis.HExists(redisFunksKey, name).Val() {
+		delete(f.funksCache, name)
+		f.redis.HDel(redisFunksKey, name).Result()
+	}
 }
 
-// CallFunk - executes the specified funk with the specified scope/context
+// CallFunk - executes the specified funk code
 func (f *FunkerManager) CallFunk(ctx echo.Context, name string) (*jsExports, error) {
-	name = strings.ToLower(name)
-	cacheKey := redisCachePrefix + base64.StdEncoding.EncodeToString([]byte(ctx.Request().Header.Get("Authorization")+ctx.Request().RequestURI))
-	cacheTTL, _ := f.redis.Get(redisFunksTTLKey + name).Int()
-	if cacheTTL > 0 && f.redis.Exists(cacheKey).Val() > 0 {
-		var d jsExports
-		json.Unmarshal([]byte(f.redis.Get(cacheKey).Val()), &d)
-		return &d, nil
-	}
-
-	f.funksLocker.RLock()
-	defer f.funksLocker.RUnlock()
-
-	name = strings.ToLower(name)
 	code := f.funksCache[name]
-
-	if nil == code {
-		return nil, errors.New("funk not found")
-	}
-
-	res, err := f.EvalFunk(ctx, code)
-	if err != nil {
-		return nil, err
-	}
-
-	d, err := json.Marshal(res)
-	if err != nil {
-		return nil, err
-	}
-
-	if cacheTTL > 0 {
-		f.redis.Set(cacheKey, string(d), time.Duration(cacheTTL)*time.Second).Result()
-	}
-
-	return res, nil
-}
-
-// EvalFunk - executes the specified funk code
-func (f *FunkerManager) EvalFunk(ctx echo.Context, prog *goja.Program) (*jsExports, error) {
-	vm := (f.vmpool.Get()).(*goja.Runtime)
-	defer f.vmpool.Put(vm)
-
 	exports := &jsExports{
 		DocType: "json",
 		Status:  200,
 		Headers: map[string]string{},
 	}
 
-	vm.Set("env", jsRequestEnv(ctx))
-	vm.Set("exports", exports)
+	jsThis := map[string]interface{}{}
 
-	_, err := vm.RunProgram(prog)
-	if err != nil {
-		return nil, err
+	jsThis = map[string]interface{}{
+		"request": jsRequestEnv(ctx),
+		"response": map[string]interface{}{
+			"status": func(code int) interface{} {
+				exports.Status = code
+				return jsThis["response"]
+			},
+			"type": func(typ string) interface{} {
+				exports.DocType = typ
+				return jsThis["response"]
+			},
+			"headers": func(h map[string]string) interface{} {
+				for k, v := range h {
+					exports.Headers[k] = v
+				}
+				return jsThis["response"]
+			},
+			"send": func(data interface{}) interface{} {
+				exports.Body = data
+				return jsThis["response"]
+			},
+		},
+		"module": func(name string) interface{} {
+			name = strings.ToLower(name)
+			return modules[name]
+		},
 	}
+
+	vm := f.vmpool.Get().(*goja.Runtime)
+	defer f.vmpool.Put(vm)
+
+	vm.Set("context", jsThis)
+	vm.RunString(fmt.Sprintf("%s.apply(context)", code))
 
 	return exports, nil
 }

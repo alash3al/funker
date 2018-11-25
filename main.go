@@ -8,6 +8,14 @@ import (
 )
 
 func main() {
+	// vm := goja.New()
+
+	// vm.RunString(`var fn = function(){return "Hello World"};`)
+	// val := vm.Get("fn")
+	// fmt.Println(val)
+	// fmt.Println(goja.AssertFunction(val))
+
+	// return
 	e := echo.New()
 
 	e.Debug = true
@@ -16,8 +24,8 @@ func main() {
 	e.Pre(middleware.RemoveTrailingSlash())
 	e.Use(middleware.CORS())
 	e.Use(middleware.GzipWithConfig(middleware.GzipConfig{Level: 9}))
-	e.Use(middleware.Recover())
-	e.Use(authMiddleware)
+	// e.Use(middleware.Recover())
+	// e.Use(authMiddleware)
 
 	e.GET("/", routeHome)
 	e.POST("/funk/add/:funkName", routeAddFunk)

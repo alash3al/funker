@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/hex"
 	"flag"
 	"log"
 	"runtime"
@@ -17,11 +20,31 @@ var (
 )
 
 var (
-	redisClient      *redis.Client
-	funker           *FunkerManager
-	redisFunksKey    = "funker:funks"
-	redisCachePrefix = "funker:cache:"
-	redisFunksTTLKey = "funker:ttl:"
+	redisClient   *redis.Client
+	funker        *FunkerManager
+	redisFunksKey = "funker:funks"
+	modules       = map[string]interface{}{
+		"fetch":        jsFetch,
+		"crypto":       jsCrypto(),
+		"localStorage": jsKVStore(),
+		"uniqid": func(l ...int) string {
+			if len(l) < 1 {
+				l = []int{15}
+			}
+			b := make([]byte, l[0])
+			rand.Read(b)
+			return hex.EncodeToString(b)
+		},
+		"base64": map[string]interface{}{
+			"encode": func(s string) string {
+				return base64.StdEncoding.EncodeToString([]byte(s))
+			},
+			"decode": func(s string) string {
+				b, _ := base64.StdEncoding.DecodeString(s)
+				return string(b)
+			},
+		},
+	}
 )
 
 func init() {

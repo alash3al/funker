@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"io/ioutil"
-	"strconv"
+
+	"github.com/rs/xid"
 
 	"github.com/dop251/goja"
 
@@ -19,9 +21,10 @@ func routeAddFunk(c echo.Context) error {
 		})
 	}
 
-	cacheTTL, _ := strconv.Atoi(c.QueryParam("cache"))
+	// cacheTTL, _ := strconv.Atoi(c.QueryParam("cache"))
+	code := fmt.Sprintf("(%s)", string(allBytes))
 
-	if err := funker.AddFunk(c.Param("funkName"), string(allBytes), int64(cacheTTL)); err != nil {
+	if err := funker.AddFunk(c.Param("funkName"), code, false); err != nil {
 		return c.JSON(500, map[string]interface{}{
 			"success": false,
 			"error":   err.Error(),
@@ -30,7 +33,7 @@ func routeAddFunk(c echo.Context) error {
 
 	return c.JSON(200, map[string]interface{}{
 		"success": true,
-		"payload": string(allBytes),
+		"payload": code,
 	})
 }
 
@@ -65,7 +68,9 @@ func routeEvalFunk(c echo.Context) error {
 		})
 	}
 
-	prog, err := goja.Compile("playground", string(allBytes), true)
+	code := fmt.Sprintf("(%s)", string(allBytes))
+
+	_, err = goja.Compile("playground", code, true)
 	if err != nil {
 		return c.JSON(500, map[string]interface{}{
 			"success": false,
@@ -73,7 +78,13 @@ func routeEvalFunk(c echo.Context) error {
 		})
 	}
 
-	res, err := funker.EvalFunk(c, prog)
+	name := "playground_" + xid.New().String()
+
+	// funker.vm.Set(name, code)
+
+	funker.AddFunk(name, code, true)
+
+	res, err := funker.CallFunk(c, name)
 	if err != nil {
 		return c.JSON(400, map[string]interface{}{
 			"success": false,

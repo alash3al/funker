@@ -6,21 +6,16 @@ Features
 ========
 - Standalone
 - Using Redis for storing `funktions`
-- Implements a caching mechanism based on redis
-- Includes `lodash` javascript library
 - Includes multiple modules like `crypto`, `localStorage`, `aes`, ... etc
-- Internal `javascript` runtime pool
+- Internal `javascript` runtime pool to boost the performance
 
 Available Modules
 ==================
-- `exports`
 - `fetch`
 - `localStorage`
 - `crypto`
 - `uniqid`
 - `base64`
-- `env`
-- `lodash`
 
 API Docs
 ========
@@ -30,24 +25,45 @@ Installation
 =============
 > `$ go get github.com/alash3al/funker`
 
-Modules RFCs
-============
-
-## # exports
-> exports is a global variable represents what we want to send to the client i.e `browser`, its all about a response object contains the `type` of the response `DocType` (`json` or `html`), the response status code `Status`, the response `Headers` and the `Body`.
+Quick Overview
+===============
+> a Funk should be in the following style
 ```js
-exports = {
-    DocType: "json", // json|html
-    Status: 200, // status code
-    Headers: {
-        "Key": "Value"
-    },
-    Body: {
-        message: "Hello World"
+function(){
+    // your code goes here
+    // `this` includes many useful helpers like the following
+    
+    // this.request: 
+    {
+        "uri":         String,
+        "proto":       String,
+        "method":      String,
+        "path":        String,
+        "host":        String,
+        "https":       Boolean,
+        "query":       Object,
+        "body":        Object,
+        "remote_addr": String,
+        "real_ip":     String,
+        "headers":     Object,
     }
+
+    // this.response
+    Response this.response.send(Any output)
+    Response this.response.status(Integer statusCode)
+    Response this.response.headers(Object headers)
+    Response this.response.type(String) // supported types: ['json', 'html']
+    
+    // this.module
+    // load a module, supported modules are: ['fetch', 'crypto', 'localStorage', 'uniqid', 'base64']
+    // example:
+    uniqid = this.module("uniqid")
+    this.response.status(200).type("json").send({theUniqueID: uniqid(50)})
 }
 ```
 
+Modules RFCs
+============
 ## # fetch
 > a broser like `fetch` function that implements a `http` client
 ```js
