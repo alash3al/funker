@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/go-resty/resty"
+	"gopkg.in/resty.v1"
 )
 
 func jsFetch(url string, opts map[string]interface{}) (resp interface{}) {
