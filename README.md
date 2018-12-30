@@ -69,7 +69,7 @@ function(){
 Modules RFCs
 ============
 ## # fetch
-> a broser like `fetch` function that implements a `http` client
+> a browser like `fetch` function that implements a `http` client
 ```js
 options = {
     method: String,
