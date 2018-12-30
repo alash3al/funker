@@ -132,7 +132,7 @@ Object validator.validate(Object data, Object rules)
 
 // Example
 data = {
-    "name: "",
+    "name": "",
     "email": "this@is.mail"
 }
 rules = {
