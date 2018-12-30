@@ -4,18 +4,19 @@ Funker
 
 Features
 ========
-- Standalone
-- Using Redis for storing `funktions`
-- Includes multiple modules like `crypto`, `localStorage`, `aes`, ... etc
-- Internal `javascript` runtime pool to boost the performance
+- Standalone.
+- Using Redis/Redix for storing `funktions`.
+- Includes multiple modules like `crypto`, `redis`, `base64`, `uniqid`, ... etc.
+- Internal `javascript` runtime pool to boost the performance.
 
 Available Modules
 ==================
 - `fetch`
-- `localStorage`
+- `redis`
 - `crypto`
 - `uniqid`
 - `base64`
+- `validator`
 
 API Docs
 ========
@@ -59,6 +60,9 @@ function(){
     // example:
     uniqid = this.module("uniqid")
     this.response.status(200).type("json").send({theUniqueID: uniqid(50)})
+
+    // or
+    this.response.send(this.request)
 }
 ```
 
@@ -87,19 +91,9 @@ responseObject = fetch(String url, [Object options])
 */
 ```
 
-## # localStorage
-> emulates the browser's `localStorage` but the backend is `redis`, it has the following methods
+## # Redis
+> uses [RedisClient](https://godoc.org/github.com/go-redis/redis#Client), just go there and read the docs
 
-```js
-
-Void localStorage.set(String namespace, String key, Any data)
-Any localStorage.get(String namespace, String key)
-localStorage.delete(String namespace, String key)
-localStorage.delete(String namespace)
-localStorage.getAll(String namespace)
-localStorage.incr(String namespace, String key, Integer factor)
-
-```
 
 ## # crypto
 > a crypto module for hashing & encrypting data
@@ -131,20 +125,26 @@ String base64.encode(String)
 String base64.decode(String)
 ```
 
-## # env
-> request environment
+## # validator
+> validates an input against some rules, it uses [govalidator](https://github.com/asaskevich/govalidator).
 ```js
-{
-    "uri":         String,
-    "proto":       String,
-    "method":      String,
-    "path":        String,
-    "host":        String,
-    "https":       Boolean,
-    "query":       Object,
-    "body":        Object,
-    "remote_addr": String,
-    "real_ip":     String,
-    "headers":     Object,
+Object validator.validate(Object data, Object rules)
+
+// Example
+data = {
+    "name: "",
+    "email": "this@is.mail"
 }
+rules = {
+    "name": ["required", "stringlength:5,10"],
+    "email": ["email"]
+}
+
+result = this.module("validator").validate(data, rules)
+
+// errors count
+result.errors
+
+// errors messages
+result.fields
 ```

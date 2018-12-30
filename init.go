@@ -13,20 +13,23 @@ import (
 
 var (
 	flagListenAddr        = flag.String("listen", ":6020", "the listen address")
-	flagRedisAddr         = flag.String("redis", "redis://localhost:6379/0", "redis server address")
+	flagRedisAddr         = flag.String("redis", "redis://localhost:6379/0", "redis compatiable server address")
 	flagWorkers           = flag.Int("workers", runtime.NumCPU(), "the number of workers/cores")
-	flagInitialVMPoolSize = flag.Int("pool", 100, "the initial value of the default VM pool size per each worker")
-	flagAuthKey           = flag.String("auther", "", "the authentication key for adding or running any funk in the playground")
+	flagInitialVMPoolSize = flag.Int("pool", 1000, "the initial value of the default VM pool size per each worker")
+	flagAuthKey           = flag.String("auth", "", "the authentication key for adding or running any funk in the playground")
 )
 
 var (
 	redisClient   *redis.Client
 	funker        *FunkerManager
 	redisFunksKey = "funker:funks"
-	modules       = map[string]interface{}{
-		"fetch":        jsFetch,
-		"crypto":       jsCrypto(),
-		"localStorage": jsKVStore(),
+)
+
+var (
+	modules = map[string]interface{}{
+		"fetch":     jsFetch,
+		"crypto":    jsCrypto(),
+		"validator": jsValidator(),
 		"uniqid": func(l ...int) string {
 			if len(l) < 1 {
 				l = []int{15}
@@ -49,19 +52,20 @@ var (
 
 func init() {
 	flag.Parse()
+	runtime.GOMAXPROCS(*flagWorkers)
 
 	redisOptions, err := redis.ParseURL(*flagRedisAddr)
 	if err != nil {
-		log.Fatal("[redis]", err.Error())
+		log.Fatal("[redis] ", err.Error())
 		return
 	}
 
 	redisClient = redis.NewClient(redisOptions)
 	if _, err := redisClient.Ping().Result(); err != nil {
-		log.Fatal("[redis]", err.Error())
+		log.Fatal("[redis] ", err.Error())
 	}
 
-	runtime.GOMAXPROCS(*flagWorkers)
-
 	funker = NewFunker()
+
+	modules["redis"] = redisClient
 }

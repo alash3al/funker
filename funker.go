@@ -129,8 +129,11 @@ func (f *FunkerManager) CallFunk(ctx echo.Context, name string) (*jsExports, err
 			},
 		},
 		"module": func(name string) interface{} {
-			name = strings.ToLower(name)
-			return modules[name]
+			mod, ok := modules[name]
+			if !ok {
+				return false
+			}
+			return mod
 		},
 	}
 
@@ -138,7 +141,15 @@ func (f *FunkerManager) CallFunk(ctx echo.Context, name string) (*jsExports, err
 	defer f.vmpool.Put(vm)
 
 	vm.Set("context", jsThis)
-	vm.RunString(fmt.Sprintf("%s.apply(context)", code))
+	_, err := vm.RunString(fmt.Sprintf("%s.apply(context)", code))
+
+	if nil != err {
+		exports.Status = 500
+		exports.Headers["Content-Type"] = "application/json"
+		exports.Body = map[string]interface{}{
+			"error": err.Error(),
+		}
+	}
 
 	return exports, nil
 }

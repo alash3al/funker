@@ -80,8 +80,6 @@ func routeEvalFunk(c echo.Context) error {
 
 	name := "playground_" + xid.New().String()
 
-	// funker.vm.Set(name, code)
-
 	funker.AddFunk(name, code, true)
 
 	res, err := funker.CallFunk(c, name)

@@ -6,7 +6,7 @@ import (
 
 func authMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		if *flagAuthKey != "" && c.Request().Header.Get("Authorization") == *flagAuthKey {
+		if (*flagAuthKey != "" && c.Request().Header.Get("Authorization") == *flagAuthKey) || (*flagAuthKey == "") {
 			return next(c)
 		}
 		return c.JSON(401, map[string]interface{}{
